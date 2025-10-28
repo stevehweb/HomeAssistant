@@ -1,0 +1,129 @@
+blueprint:
+  name: Motion-Activated Lighting
+  description: Turn on lights and switches when motion is detected, with customizable brightness and auto-off delay
+  domain: automation
+  input:
+    motion_sensors:
+      name: Motion/Presence Sensors
+      description: Select one or more motion or presence sensors that will trigger the lights
+      selector:
+        entity:
+          filter:
+            - domain: binary_sensor
+              device_class: motion
+            - domain: binary_sensor
+              device_class: occupancy
+            - domain: binary_sensor
+              device_class: presence
+          multiple: true
+    
+    target_lights:
+      name: Lights (with brightness control)
+      description: Select lights to turn on. Brightness will be applied to all selected lights.
+      default: {}
+      selector:
+        target:
+          entity:
+            - domain: light
+    
+    light_brightness:
+      name: Light Brightness
+      description: Brightness level for lights (1-100%)
+      default: 100
+      selector:
+        number:
+          min: 1
+          max: 100
+          unit_of_measurement: "%"
+          mode: slider
+    
+    target_switches:
+      name: Switches
+      description: Select switches to turn on (optional)
+      default: {}
+      selector:
+        target:
+          entity:
+            - domain: switch
+    
+    no_motion_wait:
+      name: Wait Time
+      description: Time to wait after motion stops before turning off lights and switches
+      default: 120
+      selector:
+        number:
+          min: 0
+          max: 3600
+          unit_of_measurement: seconds
+          mode: box
+    
+    blocker_entity:
+      name: Blocking Entity (Optional)
+      description: If this boolean helper is ON, the automation will not turn on lights or switches (they will still turn off if already on)
+      default: {}
+      selector:
+        entity:
+          filter:
+            - domain: input_boolean
+          multiple: false
+
+mode: restart
+max_exceeded: silent
+
+trigger:
+  - platform: state
+    entity_id: !input motion_sensors
+    from: "off"
+    to: "on"
+
+condition: []
+
+action:
+  # Check if automation is blocked by helper boolean
+  - if:
+      - condition: template
+        value_template: >
+          {% set blocker = blocker_entity.entity_id | default('') %}
+          {{ blocker == '' or is_state(blocker, 'off') }}
+    then:
+      # Turn on lights with specified brightness
+      - if:
+          - condition: template
+            value_template: "{{ target_lights.entity_id is defined or target_lights.area_id is defined or target_lights.device_id is defined }}"
+        then:
+          - service: light.turn_on
+            target: !input target_lights
+            data:
+              brightness_pct: !input light_brightness
+      
+      # Turn on switches
+      - if:
+          - condition: template
+            value_template: "{{ target_switches.entity_id is defined or target_switches.area_id is defined or target_switches.device_id is defined }}"
+        then:
+          - service: switch.turn_on
+            target: !input target_switches
+  
+  # Wait for motion to clear
+  - wait_for_trigger:
+      - platform: state
+        entity_id: !input motion_sensors
+        from: "on"
+        to: "off"
+        for: !input no_motion_wait
+  
+  # Turn off lights
+  - if:
+      - condition: template
+        value_template: "{{ target_lights.entity_id is defined or target_lights.area_id is defined or target_lights.device_id is defined }}"
+    then:
+      - service: light.turn_off
+        target: !input target_lights
+  
+  # Turn off switches
+  - if:
+      - condition: template
+        value_template: "{{ target_switches.entity_id is defined or target_switches.area_id is defined or target_switches.device_id is defined }}"
+    then:
+      - service: switch.turn_off
+        target: !input target_switches
