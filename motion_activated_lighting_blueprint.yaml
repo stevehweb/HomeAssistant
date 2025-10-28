@@ -60,12 +60,15 @@ blueprint:
     blocker_entity:
       name: Blocking Entity (Optional)
       description: If this boolean helper is ON, the automation will not turn on lights or switches (they will still turn off if already on)
-      default: {}
+      default: []
       selector:
         entity:
           filter:
             - domain: input_boolean
           multiple: false
+
+variables:
+  blocker: !input blocker_entity
 
 mode: restart
 max_exceeded: silent
@@ -79,35 +82,21 @@ trigger:
 condition: []
 
 action:
-  # Turn on lights with specified brightness (unless blocked)
-  - if:
-      - condition: template
-        value_template: >
-          {% set lights = target_lights %}
-          {{ lights is mapping and (lights.entity_id is defined or lights.area_id is defined or lights.device_id is defined) }}
-      - condition: template
-        value_template: >
-          {% set blocker = blocker_entity %}
-          {{ not (blocker is mapping and blocker.entity_id is defined and is_state(blocker.entity_id, 'on')) }}
-    then:
-      - service: light.turn_on
-        target: !input target_lights
-        data:
-          brightness_pct: !input light_brightness
-  
-  # Turn on switches (unless blocked)
-  - if:
-      - condition: template
-        value_template: >
-          {% set switches = target_switches %}
-          {{ switches is mapping and (switches.entity_id is defined or switches.area_id is defined or switches.device_id is defined) }}
-      - condition: template
-        value_template: >
-          {% set blocker = blocker_entity %}
-          {{ not (blocker is mapping and blocker.entity_id is defined and is_state(blocker.entity_id, 'on')) }}
-    then:
-      - service: switch.turn_on
-        target: !input target_switches
+  - choose:
+      # Only turn on if blocker is not set or is OFF
+      - conditions:
+          - condition: template
+            value_template: "{{ blocker == [] or is_state(blocker, 'off') }}"
+        sequence:
+          # Turn on lights with specified brightness
+          - service: light.turn_on
+            target: !input target_lights
+            data:
+              brightness_pct: !input light_brightness
+          
+          # Turn on switches
+          - service: switch.turn_on
+            target: !input target_switches
   
   # Wait for motion to clear
   - wait_for_trigger:
@@ -117,22 +106,10 @@ action:
         to: "off"
         for: !input no_motion_wait
   
-  # Turn off lights
-  - if:
-      - condition: template
-        value_template: >
-          {% set lights = target_lights %}
-          {{ lights is mapping and (lights.entity_id is defined or lights.area_id is defined or lights.device_id is defined) }}
-    then:
-      - service: light.turn_off
-        target: !input target_lights
+  # Turn off lights (always, regardless of blocker)
+  - service: light.turn_off
+    target: !input target_lights
   
-  # Turn off switches
-  - if:
-      - condition: template
-        value_template: >
-          {% set switches = target_switches %}
-          {{ switches is mapping and (switches.entity_id is defined or switches.area_id is defined or switches.device_id is defined) }}
-    then:
-      - service: switch.turn_off
-        target: !input target_switches
+  # Turn off switches (always, regardless of blocker)
+  - service: switch.turn_off
+    target: !input target_switches
