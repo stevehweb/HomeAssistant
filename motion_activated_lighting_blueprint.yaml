@@ -79,30 +79,35 @@ trigger:
 condition: []
 
 action:
-  # Check if automation is blocked by helper boolean
+  # Turn on lights with specified brightness (unless blocked)
   - if:
       - condition: template
         value_template: >
-          {% set blocker = blocker_entity.entity_id | default('') %}
-          {{ blocker == '' or is_state(blocker, 'off') }}
+          {% set lights = target_lights %}
+          {{ lights is mapping and (lights.entity_id is defined or lights.area_id is defined or lights.device_id is defined) }}
+      - condition: template
+        value_template: >
+          {% set blocker = blocker_entity %}
+          {{ not (blocker is mapping and blocker.entity_id is defined and is_state(blocker.entity_id, 'on')) }}
     then:
-      # Turn on lights with specified brightness
-      - if:
-          - condition: template
-            value_template: "{{ target_lights.entity_id is defined or target_lights.area_id is defined or target_lights.device_id is defined }}"
-        then:
-          - service: light.turn_on
-            target: !input target_lights
-            data:
-              brightness_pct: !input light_brightness
-      
-      # Turn on switches
-      - if:
-          - condition: template
-            value_template: "{{ target_switches.entity_id is defined or target_switches.area_id is defined or target_switches.device_id is defined }}"
-        then:
-          - service: switch.turn_on
-            target: !input target_switches
+      - service: light.turn_on
+        target: !input target_lights
+        data:
+          brightness_pct: !input light_brightness
+  
+  # Turn on switches (unless blocked)
+  - if:
+      - condition: template
+        value_template: >
+          {% set switches = target_switches %}
+          {{ switches is mapping and (switches.entity_id is defined or switches.area_id is defined or switches.device_id is defined) }}
+      - condition: template
+        value_template: >
+          {% set blocker = blocker_entity %}
+          {{ not (blocker is mapping and blocker.entity_id is defined and is_state(blocker.entity_id, 'on')) }}
+    then:
+      - service: switch.turn_on
+        target: !input target_switches
   
   # Wait for motion to clear
   - wait_for_trigger:
@@ -115,7 +120,9 @@ action:
   # Turn off lights
   - if:
       - condition: template
-        value_template: "{{ target_lights.entity_id is defined or target_lights.area_id is defined or target_lights.device_id is defined }}"
+        value_template: >
+          {% set lights = target_lights %}
+          {{ lights is mapping and (lights.entity_id is defined or lights.area_id is defined or lights.device_id is defined) }}
     then:
       - service: light.turn_off
         target: !input target_lights
@@ -123,7 +130,9 @@ action:
   # Turn off switches
   - if:
       - condition: template
-        value_template: "{{ target_switches.entity_id is defined or target_switches.area_id is defined or target_switches.device_id is defined }}"
+        value_template: >
+          {% set switches = target_switches %}
+          {{ switches is mapping and (switches.entity_id is defined or switches.area_id is defined or switches.device_id is defined) }}
     then:
       - service: switch.turn_off
         target: !input target_switches
