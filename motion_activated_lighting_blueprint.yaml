@@ -19,7 +19,7 @@ target_lights:
   selector:
     target:
       entity:
-        - domain: light
+        domain: light
 
 light_brightness:
   name: Light Brightness
@@ -39,7 +39,7 @@ target_switches:
   selector:
     target:
       entity:
-        - domain: switch
+        domain: switch
 
 no_motion_wait:
   name: Wait Time
