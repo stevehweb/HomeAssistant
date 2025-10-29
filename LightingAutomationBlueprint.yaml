@@ -1,0 +1,88 @@
+blueprint:
+  name: Motion and Presence Activated Lights/Switches
+  description: Turns on specified lights and/or switches when motion or presence is detected, and turns them off after a specified delay when detection stops. An optional toggle can disable the activation.
+  domain: automation
+  input:
+    trigger_sensors:
+      name: Motion/Presence Sensors
+      description: Select one or more motion (binary_sensor) or presence (person, device_tracker) entities to trigger the automation.
+      selector:
+        entity:
+          multiple: true
+          domain:
+            - binary_sensor
+            - person
+            - device_tracker
+    target_lights:
+      name: Target Lights
+      description: (Optional) Select the light entities to control.
+      selector:
+        target:
+          entity:
+            domain: light
+      default: {}
+    brightness_level:
+      name: Brightness Level
+      description: The brightness percentage for the lights when they are turned on.
+      selector:
+        number:
+          min: 1
+          max: 100
+          unit_of_measurement: "%"
+      default: 100
+    target_switches:
+      name: Target Switches
+      description: (Optional) Select the switch entities to control.
+      selector:
+        target:
+          entity:
+            domain: switch
+      default: {}
+    turn_off_delay:
+      name: Turn-off Delay
+      description: The delay in seconds before turning off devices after all sensors are clear.
+      selector:
+        number:
+          min: 0
+          max: 3600
+          unit_of_measurement: seconds
+      default: 120
+    disable_toggle:
+      name: Disable Toggle Helper
+      description: (Optional) Select an input_boolean helper. If this helper is 'on', the automation will not turn on the devices.
+      selector:
+        entity:
+          domain: input_boolean
+      default:
+
+  mode: restart
+
+  variables:
+    trigger_sensors: !input trigger_sensors
+    disable_toggle: !input disable_toggle
+    is_active: "{{ expand(trigger_sensors) | selectattr('state', 'in', ['on', 'home']) | list | count > 0 }}"
+    is_disabled: "{{ disable_toggle is not none and is_state(disable_toggle, 'on') }}"
+
+  trigger:
+    - platform: state
+      entity_id: !input trigger_sensors
+
+  action:
+    - choose:
+        - conditions:
+            - condition: template
+              value_template: "{{ is_active and not is_disabled }}"
+          sequence:
+            - service: light.turn_on
+              target: !input target_lights
+              data:
+                brightness_pct: !input brightness_level
+            - service: switch.turn_on
+              target: !input target_switches
+      default:
+        - delay:
+            seconds: !input turn_off_delay
+        - service: light.turn_off
+          target: !input target_lights
+        - service: switch.turn_off
+          target: !input target_switches
