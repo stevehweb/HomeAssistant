@@ -8,14 +8,8 @@ name: Motion/Presence Sensors
 description: Select one or more motion or presence sensors that will trigger the lights
 selector:
 entity:
-filter:
-- domain: binary_sensor
-device_class: motion
-- domain: binary_sensor
-device_class: occupancy
-- domain: binary_sensor
-device_class: presence
 multiple: true
+domain: binary_sensor
 
 ```
 target_lights:
@@ -64,9 +58,7 @@ blocker_entity:
   default: []
   selector:
     entity:
-      filter:
-        - domain: input_boolean
-      multiple: false
+      domain: input_boolean
 ```
 
 variables:
