@@ -1,85 +1,91 @@
 blueprint:
   name: Motion and Presence Activated Lights
-  description: Turns on specified lights and/or switches when motion or presence is detected. The devices turn off after a configurable delay once all sensors report no activity. An optional toggle can be used to disable the automation.
+  description: >-
+    Turn on specified lights or switches when motion or presence is detected.
+    The lights will turn off after a configurable delay once all sensors are clear.
+    The turn-off timer is reset if activity is detected again during the delay period.
+    An optional toggle helper can be used to disable the automation.
   domain: automation
   input:
-    motion_entity:
-      name: Motion/Presence Sensor(s)
-      description: The sensor(s) that will trigger the automation. Select one or more.
-      selector:
-        entity:
-          multiple: true
-          domain: binary_sensor
-          device_class:
-            - motion
-            - presence
-    light_target:
-      name: Lights
-      description: The light(s) to turn on when motion is detected.
+    motion_presence_sensors:
+      name: Motion/Presence Sensors
+      description: Select the motion or presence sensors that will trigger the automation.
       selector:
         target:
           entity:
-            domain: light
-    light_brightness:
-      name: Light Brightness
-      description: The brightness level (1-100) for the lights.
+            - domain: binary_sensor
+              device_class:
+                - motion
+                - occupancy
+            - domain: sensor
+    target_lights_switches:
+      name: Lights and Switches
+      description: Select the lights and/or switches to control.
+      selector:
+        target:
+          entity:
+            - domain: light
+            - domain: switch
+    brightness_level:
+      name: Brightness Level
+      description: The brightness level (1-100) for lights. This is ignored by switches.
+      default: 100
       selector:
         number:
           min: 1
           max: 100
+          step: 1
           unit_of_measurement: "%"
-          mode: slider
-      default: 100
-    switch_target:
-      name: Switches (Optional)
-      description: The switch(es) to turn on when motion is detected.
+    turn_off_delay:
+      name: Turn-off Delay (seconds)
+      description: Time to wait in seconds before turning off the lights after all sensors are clear.
+      default: 120
       selector:
-        target:
-          entity:
-            domain: switch
-      default: {}
-    no_motion_wait:
-      name: Turn-off Delay
-      description: Time to wait after all motion has stopped before turning off the devices.
-      selector:
-        time:
-      default: "00:05:00"
-    disable_switch:
-      name: Disable Switch (Optional)
-      description: An optional input_boolean helper. If this switch is 'on', the automation will not run.
+        number:
+          min: 0
+          max: 3600
+          unit_of_measurement: seconds
+    override_toggle:
+      name: (Optional) Disable Switch
+      description: Select an input_boolean helper that, when 'on', will prevent this automation from turning on lights.
+      default:
       selector:
         entity:
           domain: input_boolean
-      default:
 
 mode: restart
 
+variables:
+  override_toggle: !input override_toggle
+
 trigger:
   - platform: state
-    entity_id: !input motion_entity
-    to: 'on'
-    from: 'off'
+    entity_id: !input motion_presence_sensors
+    to:
+      - "on"
+      - "occupied"
+    not_from:
+      - "unavailable"
+      - "unknown"
 
 condition:
   - condition: template
-    value_template: "{{ '!input disable_switch' == '' or is_state('!input disable_switch', 'off') }}"
+    value_template: "{{ override_toggle == none or is_state(override_toggle, 'off') }}"
 
 action:
-  - service: light.turn_on
-    target: !input light_target
+  - service: homeassistant.turn_on
+    target: !input target_lights_switches
     data:
-      brightness_pct: !input light_brightness
-  - if:
-      - "{{ !input switch_target != {} }}"
-    then:
-      - service: switch.turn_on
-        target: !input switch_target
-  - wait_template: "{{ expand(!input motion_entity) | map(attribute='state') | select('eq', 'on') | list | count == 0 }}"
-  - delay: !input no_motion_wait
-  - service: light.turn_off
-    target: !input light_target
-  - if:
-      - "{{ !input switch_target != {} }}"
-    then:
-      - service: switch.turn_off
-        target: !input switch_target
+      brightness_pct: !input brightness_level
+  - wait_for_trigger:
+      - platform: template
+        value_template: >
+          {{ expand('!input motion_presence_sensors')
+             | map(attribute='state')
+             | select('in', ['on', 'occupied'])
+             | list | count == 0 }}
+    continue_on_timeout: false
+  - delay:
+      seconds: !input turn_off_delay
+  - service: homeassistant.turn_off
+    target: !input target_lights_switches
